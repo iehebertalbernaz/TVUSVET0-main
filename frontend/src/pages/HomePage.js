@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom'; // Para navegação entre telas
-import { Button } from '../components/ui/button'; // Componente botão
-import { Card } from '../components/ui/card'; // Componente card
-import { Input } from '../components/ui/input'; // Componente input
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './components/ui/dialog'; // Componente modal
-import { Search, Settings, Plus, Download } from 'lucide-react'; // Ícones
-import { toast } from 'sonner'; // Para notificações
-import { db } from '../services/database'; // Serviço do banco de dados local
-import { PatientCard } from '../components/PatientCard'; // Componente para exibir cada paciente
-import { PatientForm } from '../components/PatientForm'; // Formulário de cadastro/edição de paciente
+import { useNavigate } from 'react-router-dom';
+// CORRIGIDO: ../components/ui/...
+import { Button } from '../components/ui/button.jsx';
+import { Card } from '../components/ui/card.jsx';
+import { Input } from '../components/ui/input.jsx';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog.jsx';
+import { Search, Settings, Plus, Download } from 'lucide-react';
+import { toast } from 'sonner';
+// CORRIGIDO: ../services/... e ../components/...
+import { db } from '../services/database.js';
+import { PatientCard } from '../components/PatientCard.js';
+import { PatientForm } from '../components/PatientForm.js';
 
 export default function HomePage() {
   const [patients, setPatients] = useState([]); // Estado para armazenar a lista de pacientes

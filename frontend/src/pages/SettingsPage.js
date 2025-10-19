@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '../components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
-import { X, Upload, Download } from 'lucide-react'; // Adicionado Ícone Download
+// CORRIGIDO: ../components/ui/...
+import { Button } from '../components/ui/button.jsx';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card.jsx';
+import { Input } from '../components/ui/input.jsx';
+import { Label } from '../components/ui/label.jsx';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.jsx';
+import { X, Upload, Download } from 'lucide-react';
 import { toast } from 'sonner';
-import { db } from '../services/database'; // Serviço do DB local
-import { TemplatesManager } from '../components/TemplatesManager'; // Componente de gestão de templates
-import { ReferenceValuesManager } from '../components/ReferenceValuesManager'; // Componente de gestão de valores de referência
-import { LetterheadSettings } from '../components/LetterheadSettings'; // Componente de gestão do timbrado
+// CORRIGIDO: ../services/... e ../components/...
+import { db } from '../services/database.js';
+import { TemplatesManager } from '../components/TemplatesManager.js';
+import { ReferenceValuesManager } from '../components/ReferenceValuesManager.js';
+import { LetterheadSettings } from '../components/LetterheadSettings.js';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState(null); // Estado para as configurações gerais
@@ -70,7 +72,7 @@ export default function SettingsPage() {
             return;
           }
           try {
-            const { decryptBackup } = await import('../services/cryptoBackup');
+            const { decryptBackup } = await import('../services/cryptoBackup.js');
             jsonData = await decryptBackup(content, passphrase);
           } catch (decryptError) {
             toast.error('Senha incorreta ou arquivo de backup inválido.');
@@ -236,7 +238,7 @@ function BackupSettings({ settings, onSave }) {
 
   const handleExport = async () => {
     try {
-      const { encryptBackup } = await import('../services/cryptoBackup'); // Importa a função de criptografia
+      const { encryptBackup } = await import('../services/cryptoBackup.js');
       const json = db.exportBackup(); // Pega os dados brutos do DB
       // Define a senha a ser usada: a salva (se 'useSavedPassphrase' estiver marcado) ou a digitada
       const finalPass = useSavedPassphrase && settings.saved_backup_passphrase ? settings.saved_backup_passphrase : passphrase;
