@@ -14,6 +14,7 @@ import { db } from '../services/database'; // Importa o serviço de banco de dad
 // Importa a biblioteca para gerar DOCX
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ImageRun, Header, Footer, PageNumber, SectionType, PageBreak, Table, TableRow, TableCell, WidthType, BorderStyle } from 'docx';
 import { saveAs } from 'file-saver'; // Para iniciar o download do DOCX
+import { Select } from "../components/ui/select.jsx";
 
 // Constantes de Órgãos
 const ORGANS_BASE = [
