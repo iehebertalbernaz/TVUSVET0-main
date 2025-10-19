@@ -18,7 +18,7 @@ import { db } from '../services/database.js';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ImageRun, Header, Footer, PageNumber, SectionType, PageBreak, Table, TableRow, TableCell, WidthType, BorderStyle } from 'docx';
 import { saveAs } from 'file-saver'; // Para iniciar o download do DOCX
 // CORRIGIDO: Importação COMPLETA do Select
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select.jsx";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 
 // Constantes de Órgãos
 const ORGANS_BASE = [
