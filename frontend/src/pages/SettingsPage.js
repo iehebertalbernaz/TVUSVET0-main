@@ -70,7 +70,7 @@ export default function SettingsPage() {
             return;
           }
           try {
-            const { decryptBackup } = await import('./services/cryptoBackup');
+            const { decryptBackup } = await import('../services/cryptoBackup');
             jsonData = await decryptBackup(content, passphrase);
           } catch (decryptError) {
             toast.error('Senha incorreta ou arquivo de backup inválido.');
@@ -236,7 +236,7 @@ function BackupSettings({ settings, onSave }) {
 
   const handleExport = async () => {
     try {
-      const { encryptBackup } = await import('./services/cryptoBackup'); // Importa a função de criptografia
+      const { encryptBackup } = await import('../services/cryptoBackup'); // Importa a função de criptografia
       const json = db.exportBackup(); // Pega os dados brutos do DB
       // Define a senha a ser usada: a salva (se 'useSavedPassphrase' estiver marcado) ou a digitada
       const finalPass = useSavedPassphrase && settings.saved_backup_passphrase ? settings.saved_backup_passphrase : passphrase;
