@@ -1,21 +1,20 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-// CORRIGIDO: ../components/ui/...
-import { Button } from '../components/ui/button.jsx';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card.jsx';
-import { Input } from '../components/ui/input.jsx';
-import { Label } from '../components/ui/label.jsx';
-import { Textarea } from '../components/ui/textarea.jsx';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.jsx';
-import { Badge } from '../components/ui/badge.jsx';
-import { ScrollArea } from '../components/ui/scroll-area.jsx';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select.jsx"; // Este já estava ok
-import { Upload, Save, Download, X, AlertCircle, Image as ImageIcon, FileText, Trash2 } from 'lucide-react';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Textarea } from '../components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Badge } from '../components/ui/badge';
+import { ScrollArea } from '../components/ui/scroll-area';
+import { Upload, Save, Download, X, AlertCircle, Image as ImageIcon, FileText } from 'lucide-react';
 import { toast } from 'sonner';
-// CORRIGIDO: ../services/...
-import { db } from '../services/database.js';
+import { db } from '../services/database'; // Importa o serviço de banco de dados local
+// Importa a biblioteca para gerar DOCX
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ImageRun, Header, Footer, PageNumber, SectionType, PageBreak, Table, TableRow, TableCell, WidthType, BorderStyle } from 'docx';
-import { saveAs } from 'file-saver';
+import { saveAs } from 'file-saver'; // Para iniciar o download do DOCX
+
 // Constantes de Órgãos
 const ORGANS_BASE = [
   'Estômago', 'Fígado', 'Baço', 'Rim Esquerdo', 'Rim Direito',
@@ -695,86 +694,74 @@ function OrganEditor({ organ, templates, referenceValues, onChange }) {
   );
 }
 
-// Componente Aninhado: Input para adicionar medidas
-function MeasurementInput({ onAdd, existingMeasurements, referenceValues }) {
-  const [label, setLabel] = useState(''); // Rótulo/Nome da medida (ex: Comprimento, Espessura Lobo D)
-  const [value, setValue] = useState('');
-  const [unit, setUnit] = useState('cm');
+// Componente Aninhado: Input para adicionar medidas (VERSÃO SIMPLIFICADA SEM RÓTULO, Select COMENTADO)
+function MeasurementInput({ onAdd, existingMeasurements }) {
+    const [value, setValue] = useState('');
+    // Mantemos 'cm' como padrão, mas comentamos o Select
+    const [unit, setUnit] = useState('cm'); // <- Mantemos o estado para o Input placeholder
 
-  const handleAdd = () => {
-    const numericValue = parseFloat(value);
-    if (label && value && !isNaN(numericValue)) {
-      // Cria uma chave única (evita sobrescrever se o usuário usar o mesmo label)
-      let key = label.trim().toLowerCase().replace(/ /g, '_');
-      let counter = 1;
-      while (existingMeasurements[key]) {
-          key = `${label.trim().toLowerCase().replace(/ /g, '_')}_${counter}`;
-          counter++;
-      }
+    const handleAdd = () => {
+        const numericValue = parseFloat(value);
+        if (value && !isNaN(numericValue)) {
+            let key = 'medida';
+            let counter = 1;
+            while (existingMeasurements[`${key}_${counter}`]) {
+                counter++;
+            }
+            key = `${key}_${counter}`;
 
-      // Verifica se está fora da referência (se aplicável) - Desativado
-      // const isAbnormal = checkReference(label, numericValue, unit);
-      onAdd(key, numericValue, unit);
+            onAdd(key, numericValue, unit); // Usa o estado 'unit' (que será 'cm')
 
-      // Limpa os campos após adicionar
-      setLabel('');
-      setValue('');
-      // Mantém a unidade selecionada
-    } else {
-      toast.warning('Preencha o Rótulo e um Valor numérico válido para a medida.');
-    }
-  };
+            setValue('');
+        } else {
+            toast.warning('Por favor, insira um Valor numérico válido.');
+        }
+    };
 
-  // Função para verificar valor de referência (opcional, desativada)
-  // const checkReference = (type, val, u) => {
-  //   const ref = referenceValues.find(rv => rv.measurement_type.toLowerCase() === type.toLowerCase() && rv.unit === u);
-  //   if (!ref) return false;
-  //   return val < ref.min_value || val > ref.max_value;
-  // };
+    return (
+        <div className="grid grid-cols-12 gap-2 items-end p-3 border rounded-md bg-gray-50">
+            {/* Coluna 1 a 6: Input de Valor */}
+            <div className="col-span-6">
+                <Label htmlFor="measurement-value" className="text-xs">Valor da Medida</Label>
+                <Input
+                    id="measurement-value"
+                    type="number"
+                    step="0.01"
+                    placeholder="Valor"
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    className="h-8 text-sm"
+                    data-testid="measurement-value-input"
+                />
+            </div>
 
-  return (
-    <div className="grid grid-cols-12 gap-2 items-end p-3 border rounded-md bg-gray-50">
-      <div className="col-span-5">
-        <Label htmlFor="measurement-label" className="text-xs">Rótulo da Medida</Label>
-        <Input
-          id="measurement-label"
-          placeholder="Ex: Comprimento, Espessura"
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          className="h-8 text-sm"
-          data-testid="measurement-label-input"
-        />
-      </div>
-      <div className="col-span-3">
-        <Label htmlFor="measurement-value" className="text-xs">Valor</Label>
-        <Input
-          id="measurement-value"
-          type="number"
-          step="0.01" // Permite mais precisão
-          placeholder="Valor"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          className="h-8 text-sm"
-          data-testid="measurement-value-input"
-        />
-      </div>
-      <div className="col-span-2">
-         <Label htmlFor="measurement-unit" className="text-xs">Unidade</Label>
-         <Select value={unit} onValueChange={setUnit}>
-             <SelectTrigger className="h-8 text-xs" data-testid="measurement-unit-select">
-                 <SelectValue />
-             </SelectTrigger>
-             <SelectContent>
-                 <SelectItem value="cm">cm</SelectItem>
-                 <SelectItem value="mm">mm</SelectItem>
-             </SelectContent>
-         </Select>
-      </div>
-      <div className="col-span-2">
-        <Button onClick={handleAdd} size="sm" className="w-full h-8 text-xs" data-testid="add-measurement-button">
-          Adicionar
-        </Button>
-      </div>
-    </div>
-  );
+            {/* *** BLOCO DO SELECT COMENTADO *** */}
+            <div className="col-span-3">
+                <Label htmlFor="measurement-unit-placeholder" className="text-xs">Unidade</Label>
+                {/*
+                <Select value={unit} onValueChange={setUnit}>
+                    <SelectTrigger id="measurement-unit-select" className="h-8 text-xs focus:ring-0" data-testid="measurement-unit-select">
+                        <SelectValue placeholder="cm" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="cm">cm</SelectItem>
+                        <SelectItem value="mm">mm</SelectItem>
+                    </SelectContent>
+                </Select>
+                */}
+                {/* Adiciona um Input placeholder apenas para visualização */}
+                <Input id="measurement-unit-placeholder" value={unit} readOnly className="h-8 text-xs bg-gray-100 cursor-not-allowed" />
+            </div>
+            {/* *** FIM DO BLOCO COMENTADO *** */}
+
+
+            {/* Coluna 10 a 12: Botão Adicionar */}
+            <div className="col-span-3">
+                <Label className="text-xs opacity-0">.</Label> {/* Label vazio para alinhar */}
+                <Button onClick={handleAdd} size="sm" className="w-full h-8 text-xs" data-testid="add-measurement-button">
+                    Adicionar Medida
+                </Button>
+            </div>
+        </div>
+    );
 }
