@@ -14,7 +14,7 @@ import { db } from '../services/database'; // Importa o serviço de banco de dad
 // Importa a biblioteca para gerar DOCX
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ImageRun, Header, Footer, PageNumber, SectionType, PageBreak, Table, TableRow, TableCell, WidthType, BorderStyle } from 'docx';
 import { saveAs } from 'file-saver'; // Para iniciar o download do DOCX
-import { Select } from "../components/ui/select.jsx";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select.jsx";
 
 // Constantes de Órgãos
 const ORGANS_BASE = [
@@ -695,11 +695,10 @@ function OrganEditor({ organ, templates, referenceValues, onChange }) {
   );
 }
 
-// Componente Aninhado: Input para adicionar medidas (VERSÃO SIMPLIFICADA SEM RÓTULO, Select COMENTADO)
+// Componente Aninhado: Input para adicionar medidas (VERSÃO SIMPLIFICADA SEM RÓTULO, Select ATIVO)
 function MeasurementInput({ onAdd, existingMeasurements }) {
     const [value, setValue] = useState('');
-    // Mantemos 'cm' como padrão, mas comentamos o Select
-    const [unit, setUnit] = useState('cm'); // <- Mantemos o estado para o Input placeholder
+    const [unit, setUnit] = useState('cm'); // Unidade padrão 'cm'
 
     const handleAdd = () => {
         const numericValue = parseFloat(value);
@@ -710,9 +709,7 @@ function MeasurementInput({ onAdd, existingMeasurements }) {
                 counter++;
             }
             key = `${key}_${counter}`;
-
-            onAdd(key, numericValue, unit); // Usa o estado 'unit' (que será 'cm')
-
+            onAdd(key, numericValue, unit);
             setValue('');
         } else {
             toast.warning('Por favor, insira um Valor numérico válido.');
@@ -736,10 +733,9 @@ function MeasurementInput({ onAdd, existingMeasurements }) {
                 />
             </div>
 
-            {/* *** BLOCO DO SELECT COMENTADO *** */}
+             {/* Coluna 7 a 9: Seletor de Unidade (Usando Select importado CORRETAMENTE) */}
             <div className="col-span-3">
-                <Label htmlFor="measurement-unit-placeholder" className="text-xs">Unidade</Label>
-                {/*
+                <Label htmlFor="measurement-unit-select" className="text-xs">Unidade</Label>
                 <Select value={unit} onValueChange={setUnit}>
                     <SelectTrigger id="measurement-unit-select" className="h-8 text-xs focus:ring-0" data-testid="measurement-unit-select">
                         <SelectValue placeholder="cm" />
@@ -749,12 +745,7 @@ function MeasurementInput({ onAdd, existingMeasurements }) {
                         <SelectItem value="mm">mm</SelectItem>
                     </SelectContent>
                 </Select>
-                */}
-                {/* Adiciona um Input placeholder apenas para visualização */}
-                <Input id="measurement-unit-placeholder" value={unit} readOnly className="h-8 text-xs bg-gray-100 cursor-not-allowed" />
             </div>
-            {/* *** FIM DO BLOCO COMENTADO *** */}
-
 
             {/* Coluna 10 a 12: Botão Adicionar */}
             <div className="col-span-3">
