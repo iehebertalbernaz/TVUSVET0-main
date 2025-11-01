@@ -82,14 +82,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+
   },
-  "eslintConfig": {
-     "extends": [
-       "react-app",
-       "react-app/jest",
-       "plugin:react-hooks/recommended"
-     ]
-   },
   "devDependencies": {
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
     "@craco/craco": "^7.1.0",

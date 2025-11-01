@@ -1,3 +1,5 @@
+// frontend/src/pages/ExamPage.js
+
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 // CORRIGIDO: Adicionado .jsx no final de cada import de componente ui
@@ -19,8 +21,10 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Imag
 import { saveAs } from 'file-saver'; // Para iniciar o download do DOCX
 // CORRIGIDO: Importação COMPLETA do Select
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+// --- NEW: Import translation service ---
+import { getTranslations } from '../services/i18n.js';
 
-// Constantes de Órgãos
+// --- NEW: Centralized Organ Constants ---
 const ORGANS_BASE = [
   'Estômago', 'Fígado', 'Baço', 'Rim Esquerdo', 'Rim Direito',
   'Vesícula Urinária', 'Adrenal Esquerda', 'Adrenal Direita',
@@ -30,6 +34,18 @@ const REPRODUCTIVE_ORGANS_MALE = ['Próstata', 'Testículo Direito', 'Testículo
 const REPRODUCTIVE_ORGANS_MALE_NEUTERED = ['Próstata']; // Avaliar próstata mesmo em castrados
 const REPRODUCTIVE_ORGANS_FEMALE = ['Corpo Uterino', 'Corno Uterino Direito', 'Corno Uterino Esquerdo', 'Ovário Direito', 'Ovário Esquerdo'];
 const REPRODUCTIVE_ORGANS_FEMALE_NEUTERED = []; // Não avaliar útero/ovários em fêmeas castradas
+
+const ORGANS_ECHO = [
+  'Valva Mitral', 'Valva Aórtica', 'Valva Pulmonar', 'Valva Tricúspide',
+  'Ventrículo Esquerdo', 'Átrio Esquerdo', 'Ventrículo Direito', 'Átrio Direito',
+  'Saepto Interventricular', 'Pericárdio', 'Análise Doppler', 'Medidas (Modo-M)', 'Medidas (Modo-B)'
+].sort();
+
+const ORGANS_ECG = [
+  'Ritmo e Frequência', 'Eixo Elétrico', 'Onda P', 'Complexo QRS',
+  'Segmento ST', 'Onda T', 'Intervalos (PR, QT)', 'Conclusão ECG'
+].sort();
+// --- END NEW ---
 
 export default function ExamPage() {
   const { examId } = useParams(); // Pega o ID do exame da URL
@@ -48,6 +64,10 @@ export default function ExamPage() {
   const [isSaving, setIsSaving] = useState(false); // Flag para indicar salvamento em andamento
   const [isExporting, setIsExporting] = useState(false); // Flag para indicar exportação em andamento
   const [isLoading, setIsLoading] = useState(true); // Flag para indicar carregamento inicial
+  
+  // --- NEW: State for report language ---
+  const [reportLanguage, setReportLanguage] = useState('pt-BR');
+  // --- END NEW ---
 
   // Função para carregar todos os dados necessários do banco de dados local
   const loadExamData = useCallback(async () => {
@@ -77,13 +97,25 @@ export default function ExamPage() {
       const refValuesRes = await db.getReferenceValues();
       setReferenceValues(refValuesRes);
 
-      // Define a lista de órgãos a serem avaliados com base no sexo e castração
-      const allOrgans = [...ORGANS_BASE];
-      if (patientRes.sex === 'male') {
-        allOrgans.push(...(patientRes.is_neutered ? REPRODUCTIVE_ORGANS_MALE_NEUTERED : REPRODUCTIVE_ORGANS_MALE));
-      } else { // female
-        allOrgans.push(...(patientRes.is_neutered ? REPRODUCTIVE_ORGANS_FEMALE_NEUTERED : REPRODUCTIVE_ORGANS_FEMALE));
+      // --- MODIFIED: Define a lista de órgãos com base no TIPO de exame ---
+      let organList = [];
+      const examType = examRes.exam_type || 'ultrasound';
+
+      if (examType === 'echo') {
+        organList = [...ORGANS_ECHO];
+      } else if (examType === 'ecg') {
+        organList = [...ORGANS_ECG];
+      } else { // Padrão 'ultrasound'
+        organList = [...ORGANS_BASE];
+        if (patientRes.sex === 'male') {
+          organList.push(...(patientRes.is_neutered ? REPRODUCTIVE_ORGANS_MALE_NEUTERED : REPRODUCTIVE_ORGANS_MALE));
+        } else { // female
+          organList.push(...(patientRes.is_neutered ? REPRODUCTIVE_ORGANS_FEMALE_NEUTERED : REPRODUCTIVE_ORGANS_FEMALE));
+        }
       }
+      
+      const allOrgans = organList;
+      // --- END MOD ---
 
       // Inicializa ou carrega os dados dos órgãos
       const initialOrgansData = allOrgans.map(organName => {
@@ -93,8 +125,8 @@ export default function ExamPage() {
         return existingData || {
           organ_name: organName,
           measurements: {},
-          selected_findings: [], // Não usado atualmente, mas mantido para futuro
-          custom_notes: '', // Não usado atualmente
+          selected_findings: [],
+          custom_notes: '',
           report_text: '' // Texto final que vai para o laudo
         };
       });
@@ -134,8 +166,6 @@ export default function ExamPage() {
         images: examImages // Salva a lista de imagens atualizada
       });
       toast.success('Exame salvo com sucesso!');
-      // Opcional: Recarregar dados após salvar para garantir consistência
-      // await loadExamData();
     } catch (error) {
       toast.error('Erro ao salvar o exame.');
       console.error('Erro DB (updateExam):', error);
@@ -156,7 +186,6 @@ export default function ExamPage() {
     try {
       // Processa cada arquivo selecionado
       for (let file of files) {
-        // Verifica tipo e tamanho
         if (!file.type.startsWith('image/')) {
           toast.warning(`Arquivo "${file.name}" não é uma imagem e foi ignorado.`);
           continue;
@@ -165,8 +194,6 @@ export default function ExamPage() {
           toast.warning(`Imagem "${file.name}" excede 10MB e foi ignorada.`);
           continue;
         }
-
-        // Converte a imagem para Base64
         const base64Data = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = (e) => resolve(e.target.result);
@@ -174,12 +201,11 @@ export default function ExamPage() {
           reader.readAsDataURL(file);
         });
 
-        // Cria o objeto da imagem para salvar no DB
         const imageData = {
           id: db.generateId(), // Gera um ID único para a imagem
           filename: file.name,
           data: base64Data, // String Base64
-          organ: organsData[currentOrganIndex]?.organ_name || null // Associa ao órgão atual (opcional)
+          organ: organsData[currentOrganIndex]?.organ_name || null // Associa ao órgão atual
         };
         newImages.push(imageData); // Adiciona à lista
         addedCount++;
@@ -187,8 +213,10 @@ export default function ExamPage() {
 
       if (addedCount > 0) {
           setExamImages(newImages); // Atualiza o estado local
-          await saveExam(); // Salva o exame com as novas imagens
-          toast.success(`${addedCount} imagem(ns) adicionada(s)!`);
+          // --- MODIFIED: Não salva mais automaticamente em cada upload ---
+          // Apenas atualiza o estado. O usuário deve clicar em "Salvar"
+          toast.success(`${addedCount} imagem(ns) adicionada(s)! Salve o exame para mantê-las.`);
+          // await saveExam(); // REMOVIDO
       }
 
     } catch (error) {
@@ -196,7 +224,6 @@ export default function ExamPage() {
       console.error('Erro Upload Imagem:', error);
     } finally {
       setUploading(false);
-      // Limpa o input para permitir selecionar o mesmo arquivo novamente
       event.target.value = null;
     }
   };
@@ -206,13 +233,12 @@ export default function ExamPage() {
      if (!window.confirm('Tem certeza que deseja remover esta imagem?')) return;
     try {
       const updatedImages = examImages.filter(img => img.id !== imageId);
-      setExamImages(updatedImages); // Atualiza estado local primeiro para resposta rápida
-      await saveExam(); // Salva o exame sem a imagem
-      toast.success('Imagem removida com sucesso!');
+      setExamImages(updatedImages); // Atualiza estado local primeiro
+      // --- MODIFIED: Não salva mais automaticamente ---
+      toast.warning('Imagem removida. Salve o exame para confirmar.');
+      // await saveExam(); // REMOVIDO
     } catch (error) {
       toast.error('Erro ao remover imagem.');
-      // Desfaz a remoção local se o salvamento falhar (opcional)
-      setExamImages(examImages);
       console.error('Erro DB (deleteImage):', error);
     }
   };
@@ -238,34 +264,39 @@ export default function ExamPage() {
      return bytes.buffer;
   };
 
- // Função para exportar o laudo para DOCX
- const exportToDocx = async () => {
+ // --- MODIFIED: Função para exportar o laudo para DOCX (agora bilíngue) ---
+ const exportToDocx = async (lang) => { // Recebe o idioma
      if (isExporting || isLoading || !patient || !exam) return;
      setIsExporting(true);
      toast.info('Gerando laudo DOCX...');
 
+     // --- NEW: Get translation object ---
+     const t = getTranslations(lang);
+
      try {
-         await saveExam(); // Garante que os dados mais recentes estão salvos antes de exportar
+         // Garante que os dados mais recentes estão salvos antes de exportar
+         // (O usuário pode ter editado e esquecido de salvar)
+         await saveExam(); 
+         
          const settings = await db.getSettings(); // Pega as configurações da clínica
 
          let docChildren = []; // Array para guardar os parágrafos e tabelas do corpo do DOCX
 
-         // --- Seção de Cabeçalho (será adicionada à seção do DOCX) ---
+         // --- Seção de Cabeçalho (Header) ---
          let headerChildren = [];
-         // Tenta adicionar a imagem do timbrado se existir
          if (settings.letterhead_path && settings.letterhead_path.startsWith('data:image')) {
              try {
              const imgBuffer = base64ToArrayBuffer(settings.letterhead_path);
              headerChildren.push(
                  new Paragraph({
-                 children: [new ImageRun({ data: imgBuffer, transformation: { width: 595, height: 100 } })], // Ajuste width/height conforme necessário
+                 children: [new ImageRun({ data: imgBuffer, transformation: { width: 595, height: 100 } })], // Ajuste
                  alignment: AlignmentType.CENTER,
                  })
              );
              } catch (e) { console.error("Erro ao processar imagem do timbrado:", e); }
-         } else { // Se não houver imagem, usa texto
+         } else {
               if (settings.clinic_name) {
-                 headerChildren.push(new Paragraph({ text: settings.clinic_name, alignment: AlignmentType.CENTER, style: "Heading1" })); // Usar estilo se disponível
+                 headerChildren.push(new Paragraph({ text: settings.clinic_name, alignment: AlignmentType.CENTER, style: "Heading1" }));
               }
                if (settings.veterinarian_name || settings.crmv) {
                   headerChildren.push(new Paragraph({ text: `${settings.veterinarian_name || ''} ${settings.crmv ? '• CRMV: ' + settings.crmv : ''}`, alignment: AlignmentType.CENTER, style: "Normal"}));
@@ -278,48 +309,66 @@ export default function ExamPage() {
           const header = new Header({ children: headerChildren });
 
          // --- Seção do Corpo do Laudo ---
-         docChildren.push(new Paragraph({ text: 'LAUDO DE ULTRASSONOGRAFIA ABDOMINAL', heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER }));
+         
+         // --- NEW: Dynamic Title ---
+         let reportTitle = t.reportTitleUS; // Default
+         if (exam.exam_type === 'echo') reportTitle = t.reportTitleEcho;
+         if (exam.exam_type === 'ecg') reportTitle = t.reportTitleEcg;
+         docChildren.push(new Paragraph({ text: reportTitle, heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER }));
+         // --- END NEW ---
+
          docChildren.push(new Paragraph(" ")); // Espaçador
 
-         // Dados do Paciente
-         docChildren.push(new Paragraph({ text: 'Dados do Paciente', heading: HeadingLevel.HEADING_2 }));
+         // Dados do Paciente (usando 't' para traduções)
+         docChildren.push(new Paragraph({ text: t.patientData, heading: HeadingLevel.HEADING_2 }));
          const addPatientInfo = (label, value) => {
              if (value !== null && value !== undefined && value !== '') {
                  docChildren.push(new Paragraph({ children: [ new TextRun({ text: `${label}: `, bold: true }), new TextRun(String(value)) ] }));
              }
          };
-         addPatientInfo('Nome', patient.name);
-         addPatientInfo('Espécie', patient.species === 'dog' ? 'Canina' : 'Felina');
-         addPatientInfo('Raça', patient.breed);
-         const currentWeight = examWeight !== '' ? examWeight : patient.weight; // Prioriza peso do exame
-         addPatientInfo('Peso', `${currentWeight} kg`);
-         addPatientInfo('Porte', patient.size === 'small' ? 'Pequeno' : patient.size === 'medium' ? 'Médio' : 'Grande');
-         addPatientInfo('Sexo', patient.sex === 'male' ? 'Macho' : 'Fêmea');
-         if (patient.is_neutered) { docChildren.push(new Paragraph({ children: [ new TextRun({ text: "Status Reprodutivo: ", bold: true }), new TextRun("Castrado(a)") ] })); }
-         addPatientInfo('Tutor(a)', patient.owner_name);
+         
+         addPatientInfo(t.patientName, patient.name);
+         addPatientInfo(t.species, patient.species === 'dog' ? t.dog : t.cat);
+         addPatientInfo(t.breed, patient.breed);
+         const currentWeight = examWeight !== '' ? examWeight : patient.weight;
+         addPatientInfo(t.weight, `${currentWeight} kg`);
+         addPatientInfo(t.size, patient.size === 'small' ? t.small : patient.size === 'medium' ? t.medium : t.large);
+         addPatientInfo(t.sex, patient.sex === 'male' ? t.male : t.female);
+         if (patient.is_neutered) { docChildren.push(new Paragraph({ children: [ new TextRun({ text: `${t.sex}: `, bold: true }), new TextRun(t.neutered) ] })); }
+         addPatientInfo(t.owner, patient.owner_name);
          const examDate = new Date(exam.exam_date);
-         addPatientInfo('Data do Exame', examDate.toLocaleDateString('pt-BR'));
+         addPatientInfo(t.examDate, examDate.toLocaleDateString(lang)); // Usa o idioma
          docChildren.push(new Paragraph(" "));
 
-         // Achados Ultrassonográficos
-         docChildren.push(new Paragraph({ text: 'Achados Ultrassonográficos', heading: HeadingLevel.HEADING_2 }));
+         // Achados (Laudo)
+         docChildren.push(new Paragraph({ text: t.findings, heading: HeadingLevel.HEADING_2 }));
 
-         // Define a ordem correta dos órgãos para o laudo
-         const reportOrganOrder = [...ORGANS_BASE];
-          if (patient.sex === 'male') {
-             reportOrganOrder.push(...(patient.is_neutered ? REPRODUCTIVE_ORGANS_MALE_NEUTERED : REPRODUCTIVE_ORGANS_MALE));
+         // --- MODIFIED: Define a ordem correta dos órgãos com base no TIPO de exame ---
+         let reportOrganOrder = [];
+         const examType = exam.exam_type || 'ultrasound';
+
+         if (examType === 'echo') {
+           reportOrganOrder = [...ORGANS_ECHO];
+         } else if (examType === 'ecg') {
+           reportOrganOrder = [...ORGANS_ECG];
          } else {
+           reportOrganOrder = [...ORGANS_BASE];
+           if (patient.sex === 'male') {
+             reportOrganOrder.push(...(patient.is_neutered ? REPRODUCTIVE_ORGANS_MALE_NEUTERED : REPRODUCTIVE_ORGANS_MALE));
+           } else {
              reportOrganOrder.push(...(patient.is_neutered ? REPRODUCTIVE_ORGANS_FEMALE_NEUTERED : REPRODUCTIVE_ORGANS_FEMALE));
+           }
          }
+         // --- END MOD ---
 
          // Adiciona os textos de cada órgão na ordem definida
          reportOrganOrder.forEach(organName => {
              const organData = organsData.find(o => o.organ_name === organName);
              if (organData && organData.report_text && organData.report_text.trim()) {
                  docChildren.push(new Paragraph({ text: organName, heading: HeadingLevel.HEADING_3 }));
-                 // Adiciona cada linha do texto como um parágrafo separado para manter a formatação
+                 
                  organData.report_text.split('\n').forEach(line => {
-                     if (line.trim()) { // Evita parágrafos vazios extras
+                     if (line.trim()) {
                          docChildren.push(new Paragraph({ text: line.trim(), alignment: AlignmentType.JUSTIFIED }));
                      }
                  });
@@ -330,20 +379,19 @@ export default function ExamPage() {
          // Adiciona quebra de página antes das imagens, se houver imagens
          if (examImages.length > 0) {
               docChildren.push(new Paragraph({ children: [new PageBreak()] }));
-              docChildren.push(new Paragraph({ text: 'Imagens do Exame', heading: HeadingLevel.HEADING_2, alignment: AlignmentType.CENTER }));
+              docChildren.push(new Paragraph({ text: t.images, heading: HeadingLevel.HEADING_2, alignment: AlignmentType.CENTER }));
               docChildren.push(new Paragraph(" "));
          }
 
-         // Agrupa imagens em blocos de 6 para cada tabela/página
+         // Agrupa imagens em blocos de 6
          const imageChunks = [];
          for (let i = 0; i < examImages.length; i += 6) {
              imageChunks.push(examImages.slice(i, i + 6));
          }
 
-         // Cria uma tabela para cada bloco de 6 imagens
+         // Cria tabelas para as imagens
          imageChunks.forEach((chunk, chunkIndex) => {
              const rows = [];
-             // Cria as linhas da tabela (até 2 linhas com 3 imagens cada)
              for (let i = 0; i < chunk.length; i += 3) {
                  const rowImages = chunk.slice(i, i + 3);
                  const tableCells = rowImages.map(img => {
@@ -352,48 +400,43 @@ export default function ExamPage() {
                          return new TableCell({
                              children: [
                                  new Paragraph({
-                                     children: [new ImageRun({ data: imgBuffer, transformation: { width: 180, height: 140 } })], // Tamanho fixo para consistência
+                                     children: [new ImageRun({ data: imgBuffer, transformation: { width: 180, height: 140 } })], 
                                      alignment: AlignmentType.CENTER
                                  }),
-                                 // Adiciona legenda com o nome do órgão, se houver
-                                 new Paragraph({ text: img.organ || '', alignment: AlignmentType.CENTER, style: "Caption" }) // Usa estilo Caption se disponível
+                                 new Paragraph({ text: img.organ || '', alignment: AlignmentType.CENTER, style: "Caption" })
                              ],
-                             // Remove bordas da célula
                              borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE } },
-                             margins: { bottom: 100 } // Espaçamento abaixo da imagem/legenda
+                             margins: { bottom: 100 } 
                          });
                      } catch (e) {
                          console.error("Erro ao processar imagem para DOCX:", img.filename, e);
                          return new TableCell({ children: [new Paragraph("Erro ao carregar imagem")] });
                      }
                  });
-                 // Preenche células vazias se a linha não tiver 3 imagens
+                 
                  while (tableCells.length < 3) {
                      tableCells.push(new TableCell({ children: [new Paragraph('')], borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE } } }));
                  }
                  rows.push(new TableRow({ children: tableCells }));
              }
 
-             // Adiciona a tabela ao documento
              const table = new Table({
                  rows: rows,
                  width: { size: 100, type: WidthType.PERCENTAGE },
-                  // Remove bordas da tabela inteira
                  borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE }, insideHorizontal: { style: BorderStyle.NONE }, insideVertical: { style: BorderStyle.NONE } },
              });
              docChildren.push(table);
 
-             // Adiciona quebra de página se houver mais blocos de imagens
              if (chunkIndex < imageChunks.length - 1) {
                  docChildren.push(new Paragraph({ children: [new PageBreak()] }));
-                  docChildren.push(new Paragraph(" ")); // Espaço após quebra de página
+                  docChildren.push(new Paragraph(" "));
              }
          });
 
-         // Cria o documento final com a seção contendo cabeçalho e corpo
+         // Cria o documento final
          const doc = new Document({
              sections: [{
-                 properties: { }, // Pode adicionar margens aqui se necessário
+                 properties: { },
                  headers: { default: header },
                  children: docChildren,
              }],
@@ -411,15 +454,26 @@ export default function ExamPage() {
          setIsExporting(false);
      }
  };
+ // --- END MODIFIED FUNCTION ---
 
   // Renderiza "Carregando..." ou a interface do exame
   if (isLoading || !patient || !exam) {
     return <div className="flex items-center justify-center h-screen">Carregando dados do exame...</div>;
   }
+  
+  // --- NEW: Helper para nome do exame ---
+  const getExamTypeName = (type) => {
+    switch (type) {
+      case 'echo': return 'Ecocardiografia';
+      case 'ecg': return 'Eletrocardiografia';
+      case 'ultrasound':
+      default: return 'Ultrassonografia Abdominal';
+    }
+  };
+  // --- END NEW ---
 
-  const currentOrgan = organsData[currentOrganIndex]; // Pega os dados do órgão atualmente selecionado
-  const organTemplates = templates.filter(t => t.organ === currentOrgan?.organ_name); // Filtra templates para o órgão atual
-  // Filtra valores de referência para o órgão, espécie e porte atuais
+  const currentOrgan = organsData[currentOrganIndex];
+  const organTemplates = templates.filter(t => t.organ === currentOrgan?.organ_name);
   const organReferenceValues = referenceValues.filter(rv =>
     rv.organ === currentOrgan?.organ_name && rv.species === patient.species && rv.size === patient.size
   );
@@ -431,7 +485,8 @@ export default function ExamPage() {
         <div className="flex flex-col sm:flex-row justify-between items-start mb-6 gap-4">
           <div className="flex-1">
             <h1 className="text-3xl font-bold bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent mb-1" style={{ fontFamily: 'Manrope, sans-serif' }}>
-              Exame de {patient.name}
+              {/* --- MODIFIED: Show dynamic exam name --- */}
+              {getExamTypeName(exam.exam_type)} de {patient.name}
             </h1>
             <p className="text-gray-600 mb-2">
               {patient.breed} • {new Date(exam.exam_date).toLocaleDateString('pt-BR')}
@@ -445,34 +500,52 @@ export default function ExamPage() {
                 step="0.1"
                 value={examWeight}
                 onChange={(e) => setExamWeight(e.target.value)}
-                className="w-28 h-8 text-sm" // Tamanho menor
+                className="w-28 h-8 text-sm" 
                 placeholder={`Cadastrado: ${patient.weight}kg`}
                 data-testid="exam-weight-input"
               />
             </div>
           </div>
-          {/* Botões de Ação */}
-          <div className="flex flex-wrap gap-2">
+          
+          {/* --- MODIFIED: Botões de Ação (adicionado Seletor de Idioma) --- */}
+          <div className="flex flex-wrap items-end gap-2">
             <Button onClick={saveExam} variant="outline" className="h-10 px-4" disabled={isSaving || isLoading} data-testid="save-exam-button">
               <Save className="mr-2 h-4 w-4" />
               {isSaving ? 'Salvando...' : 'Salvar Alterações'}
             </Button>
-            <Button onClick={exportToDocx} className="h-10 px-4" disabled={isExporting || isLoading} data-testid="export-button">
+            
+            {/* --- NEW: Language Selector --- */}
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="report-lang" className="text-xs text-gray-600">Idioma do Laudo</Label>
+              <Select value={reportLanguage} onValueChange={setReportLanguage}>
+                <SelectTrigger id="report-lang" className="h-10 w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pt-BR">Português</SelectItem>
+                  <SelectItem value="en-US">English</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <Button onClick={() => exportToDocx(reportLanguage)} className="h-10 px-4" disabled={isExporting || isLoading} data-testid="export-button">
               <Download className="mr-2 h-4 w-4" />
               {isExporting ? 'Exportando...' : 'Exportar Laudo (.docx)'}
             </Button>
+            
             <Button onClick={() => navigate('/')} variant="ghost" className="h-10 px-4">
               <X className="mr-2 h-4 w-4" />
               Fechar Exame
             </Button>
           </div>
+          {/* --- END MOD --- */}
         </div>
 
         {/* Layout Principal: Imagens | Editor | Lista de Órgãos */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
 
           {/* Coluna de Imagens (Esquerda) */}
-          <div className="lg:col-span-4"> {/* Ajustado para ocupar menos espaço */}
+          <div className="lg:col-span-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-base font-medium">Imagens ({examImages.length})</CardTitle>
@@ -485,7 +558,7 @@ export default function ExamPage() {
                 <input id="image-upload" type="file" multiple accept="image/*" onChange={handleImageUpload} className="hidden"/>
               </CardHeader>
               <CardContent className="p-3">
-                <ScrollArea className="h-[calc(100vh-260px)]"> {/* Ajuste de altura */}
+                <ScrollArea className="h-[calc(100vh-260px)]">
                   {examImages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-10 text-center">
                       <ImageIcon className="h-16 w-16 text-gray-300 mb-3" />
@@ -506,7 +579,6 @@ export default function ExamPage() {
                             <X className="h-3 w-3" />
                             <span className="sr-only">Remover Imagem</span>
                           </Button>
-                          {/* Mostra o órgão associado se houver */}
                           {image.organ && <Badge variant="secondary" className="absolute bottom-1.5 left-1.5 text-xs">{image.organ}</Badge>}
                         </div>
                       ))}
@@ -518,37 +590,38 @@ export default function ExamPage() {
           </div>
 
           {/* Coluna do Editor de Órgão (Centro) */}
-          <div className="lg:col-span-6"> {/* Ajustado para ocupar mais espaço */}
+          <div className="lg:col-span-6">
             {currentOrgan && (
               <OrganEditor
-                key={currentOrgan.organ_name} // Chave para forçar remontagem ao mudar de órgão
+                key={currentOrgan.organ_name} // Chave para forçar remontagem
                 organ={currentOrgan}
                 templates={organTemplates}
                 referenceValues={organReferenceValues}
                 onChange={(field, value) => updateOrganData(currentOrganIndex, field, value)}
+                // --- NEW: Pass language for template ---
+                reportLanguage={reportLanguage}
               />
             )}
           </div>
 
           {/* Coluna da Lista de Órgãos (Direita) */}
-          <div className="lg:col-span-2"> {/* Ajustado para ocupar menos espaço */}
+          <div className="lg:col-span-2"> 
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">Órgãos Avaliados</CardTitle>
               </CardHeader>
               <CardContent className="p-2">
-                <ScrollArea className="h-[calc(100vh-260px)]"> {/* Ajuste de altura */}
+                <ScrollArea className="h-[calc(100vh-260px)]"> 
                   <div className="space-y-1">
                     {organsData.map((organ, idx) => (
                       <Button
-                        key={organ.organ_name} // Usar nome do órgão como chave
-                        variant={currentOrganIndex === idx ? 'secondary' : 'ghost'} // Destaca o órgão ativo
-                        className="w-full justify-start text-left h-auto py-2 px-3 text-xs" // Estilo mais compacto
+                        key={organ.organ_name} 
+                        variant={currentOrganIndex === idx ? 'secondary' : 'ghost'} 
+                        className="w-full justify-start text-left h-auto py-2 px-3 text-xs" 
                         onClick={() => setCurrentOrganIndex(idx)}
                         data-testid={`organ-button-${idx}`}
                       >
                         {organ.organ_name}
-                        {/* Adiciona um indicador visual se o órgão já tem texto no laudo */}
                         {organ.report_text && organ.report_text.trim() && (
                           <span className="ml-auto w-2 h-2 rounded-full bg-emerald-500" title="Possui texto no laudo"></span>
                         )}
@@ -565,61 +638,68 @@ export default function ExamPage() {
   );
 }
 
-// Componente Aninhado: Editor de Órgão
-function OrganEditor({ organ, templates, referenceValues, onChange }) {
-  // Estados locais para edição dentro deste componente
+// --- MODIFIED: Componente Aninhado: Editor de Órgão ---
+function OrganEditor({ organ, templates, referenceValues, onChange, reportLanguage }) {
   const [measurements, setMeasurements] = useState(organ.measurements || {});
   const [reportText, setReportText] = useState(organ.report_text || '');
-  const [activeTab, setActiveTab] = useState('report'); // Começa na aba Laudo
+  const [activeTab, setActiveTab] = useState('report'); 
 
-  // Sincroniza estados locais se o órgão mudar (importante!)
   useEffect(() => {
     setMeasurements(organ.measurements || {});
     setReportText(organ.report_text || '');
   }, [organ]);
 
-  // Handler para salvar as medidas no estado PAI (ExamPage)
   const handleMeasurementsChange = (newMeasurements) => {
     setMeasurements(newMeasurements);
     onChange('measurements', newMeasurements); // Atualiza o estado em ExamPage
   };
 
-  // Handler para salvar o texto do laudo no estado PAI
   const handleReportTextChange = (newText) => {
     setReportText(newText);
     onChange('report_text', newText); // Atualiza o estado em ExamPage
   };
 
-  // Insere um texto de template no campo do laudo
-  const insertTemplate = (templateText) => {
-    // Adiciona o texto na posição atual do cursor ou no final
-    const textarea = document.getElementById(`report-text-${organ.organ_name}`); // ID único
+  // --- MODIFIED: Insere um texto de template (na língua correta) ---
+  const insertTemplate = (template) => {
+    // Pega o texto do objeto template na língua selecionada, ou fallback para pt-BR, ou string antiga
+    const templateText = (typeof template.text === 'object' && template.text !== null)
+      ? (template.text[reportLanguage] || template.text['pt-BR'] || '')
+      : (template.text || ''); // Fallback para formato de string antigo
+
+    if (!templateText) {
+      toast.info('Este template não possui texto para o idioma selecionado.');
+      return;
+    }
+
+    const textarea = document.getElementById(`report-text-${organ.organ_name}`);
     if (textarea) {
         const start = textarea.selectionStart;
         const end = textarea.selectionEnd;
         const currentText = textarea.value;
         const newText = currentText.substring(0, start) + templateText + currentText.substring(end);
-        textarea.value = newText; // Atualiza o valor diretamente (React controlará via state)
+        
         handleReportTextChange(newText); // Atualiza o estado
-        // Move o cursor para o final do texto inserido
-        textarea.selectionStart = textarea.selectionEnd = start + templateText.length;
-        textarea.focus();
+        
+        // Foca e move o cursor após a atualização do estado
+        requestAnimationFrame(() => {
+          textarea.focus();
+          textarea.selectionStart = textarea.selectionEnd = start + templateText.length;
+        });
     } else {
-        // Fallback se não encontrar o textarea (adiciona ao final)
         const newFullText = reportText ? `${reportText}\n${templateText}` : templateText;
         handleReportTextChange(newFullText);
     }
   };
+  // --- END MOD ---
 
   return (
     <Card data-testid={`organ-editor-${organ.organ_name}`}>
       <CardHeader>
         <CardTitle>{organ.organ_name}</CardTitle>
-        {/* Opcional: Descrição ou info rápida */}
       </CardHeader>
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3 h-10"> {/* Altura ligeiramente menor */}
+          <TabsList className="grid w-full grid-cols-3 h-10"> 
             <TabsTrigger value="measurements">Medidas</TabsTrigger>
             <TabsTrigger value="findings">Achados</TabsTrigger>
             <TabsTrigger value="report">Laudo</TabsTrigger>
@@ -631,12 +711,12 @@ function OrganEditor({ organ, templates, referenceValues, onChange }) {
                onAdd={(type, value, unit) => {
                  const newMeasurements = {
                    ...measurements,
-                   [type]: { value: parseFloat(value), unit, is_abnormal: false } // is_abnormal desativado por enquanto
+                   [type]: { value: parseFloat(value), unit, is_abnormal: false } 
                  };
                  handleMeasurementsChange(newMeasurements);
                }}
-               existingMeasurements={measurements} // Passa as medidas existentes
-               referenceValues={referenceValues} // Passa os valores de referência para validação (opcional)
+               existingMeasurements={measurements} 
+               referenceValues={referenceValues} 
              />
             {Object.keys(measurements).length > 0 && (
               <div className="space-y-2 pt-4 border-t">
@@ -658,22 +738,34 @@ function OrganEditor({ organ, templates, referenceValues, onChange }) {
 
           {/* Aba de Achados (Templates) */}
           <TabsContent value="findings" className="mt-4 space-y-3">
-            <h3 className="text-sm font-medium text-gray-700">Textos Padrão:</h3>
+            <h3 className="text-sm font-medium text-gray-700">Textos Padrão (Idioma: {reportLanguage}):</h3>
             <ScrollArea className="h-[400px] border rounded-md p-2">
               {templates.length > 0 ? (
-                templates.map(template => (
-                  <Button
-                    key={template.id}
-                    variant="ghost"
-                    className="w-full justify-start text-left h-auto py-2 px-2 text-xs mb-1 hover:bg-emerald-50"
-                    onClick={() => insertTemplate(template.text)}
-                    data-testid={`template-button-${template.id}`}
-                    title={`Inserir: "${template.text}"`} // Tooltip com o texto completo
-                  >
-                    {/* Mostra um título curto ou início do texto */}
-                    {template.title || template.text.substring(0, 60) + (template.text.length > 60 ? '...' : '')}
-                  </Button>
-                ))
+                templates.map(template => {
+                  // --- MODIFIED: Pega título na língua correta para exibir ---
+                  const title = (typeof template.title === 'object' && template.title !== null)
+                    ? (template.title[reportLanguage] || template.title['pt-BR'] || 'Template Antigo')
+                    : (template.title || 'Template Antigo');
+                  
+                  // Pega o texto para o tooltip
+                  const tooltipText = (typeof template.text === 'object' && template.text !== null)
+                    ? (template.text[reportLanguage] || template.text['pt-BR'] || '')
+                    : (template.text || '');
+                  
+                  return (
+                    <Button
+                      key={template.id}
+                      variant="ghost"
+                      className="w-full justify-start text-left h-auto py-2 px-2 text-xs mb-1 hover:bg-emerald-50"
+                      onClick={() => insertTemplate(template)} // Passa o objeto template inteiro
+                      data-testid={`template-button-${template.id}`}
+                      title={`Inserir: "${tooltipText}"`} // Tooltip com o texto completo
+                    >
+                      {title}
+                    </Button>
+                  );
+                  // --- END MOD ---
+                })
               ) : (
                 <p className="text-xs text-gray-500 text-center py-4">Nenhum texto padrão encontrado para {organ.organ_name}.</p>
               )}
@@ -684,10 +776,10 @@ function OrganEditor({ organ, templates, referenceValues, onChange }) {
           <TabsContent value="report" className="mt-4">
             <Label htmlFor={`report-text-${organ.organ_name}`} className="text-sm font-medium text-gray-700">Texto Final para o Laudo:</Label>
             <Textarea
-              id={`report-text-${organ.organ_name}`} // ID único por órgão
+              id={`report-text-${organ.organ_name}`}
               value={reportText}
               onChange={(e) => handleReportTextChange(e.target.value)}
-              rows={15} // Altura ajustável conforme necessário
+              rows={15} 
               placeholder="Digite o texto do laudo aqui ou use os achados pré-definidos da aba 'Achados'."
               className="mt-1 text-sm"
               data-testid="report-textarea"
@@ -698,11 +790,13 @@ function OrganEditor({ organ, templates, referenceValues, onChange }) {
     </Card>
   );
 }
+// --- END MODIFIED ---
 
-// Componente Aninhado: Input para adicionar medidas (VERSÃO SIMPLIFICADA SEM RÓTULO, Select ATIVO)
+
+// Componente Aninhado: Input para adicionar medidas (Sem alterações)
 function MeasurementInput({ onAdd, existingMeasurements }) {
     const [value, setValue] = useState('');
-    const [unit, setUnit] = useState('cm'); // Unidade padrão 'cm'
+    const [unit, setUnit] = useState('cm'); 
 
     const handleAdd = () => {
         const numericValue = parseFloat(value);
@@ -737,7 +831,7 @@ function MeasurementInput({ onAdd, existingMeasurements }) {
                 />
             </div>
 
-             {/* Coluna 7 a 9: Seletor de Unidade (Usando Select importado CORRETAMENTE) */}
+             {/* Coluna 7 a 9: Seletor de Unidade */}
             <div className="col-span-3">
                 <Label htmlFor="measurement-unit-select" className="text-xs">Unidade</Label>
                 <Select value={unit} onValueChange={setUnit}>

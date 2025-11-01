@@ -1,3 +1,5 @@
+// frontend/src/components/PatientCard.js
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card.jsx';
@@ -9,8 +11,23 @@ import { Plus, FileText, Edit } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '../services/database.js'; // Sobe um nível para encontrar 'services'
 import { PatientForm } from './PatientForm.js';
-// O restante da função PatientCard permanece igual...
-export function PatientCard({ patient, onUpdate, onEdit }) { // Adicionado onEdit como prop
+
+// --- NEW: Helper function to display exam type ---
+const getExamTypeName = (type) => {
+  switch (type) {
+    case 'echo':
+      return 'Ecocardiografia';
+    case 'ecg':
+      return 'Eletrocardiografia';
+    case 'ultrasound':
+    default:
+      return 'Ultrassonografia';
+  }
+};
+// --- END NEW ---
+
+// --- MODIFIED: Added onNewExam prop ---
+export function PatientCard({ patient, onUpdate, onEdit, onNewExam }) {
   const [exams, setExams] = useState([]);
   const [examsCount, setExamsCount] = useState(0);
   const [showExamsDialog, setShowExamsDialog] = useState(false); // Renomeado para clareza
@@ -20,7 +37,6 @@ export function PatientCard({ patient, onUpdate, onEdit }) { // Adicionado onEdi
   // Carrega contagem inicial e sempre que 'patient.id' ou 'onUpdate' mudar
   useEffect(() => {
      loadExamsCount();
-     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patient.id, onUpdate]); // Adicionado onUpdate como dependência
 
   const loadExamsCount = async () => { // Async para consistência futura
@@ -39,18 +55,8 @@ export function PatientCard({ patient, onUpdate, onEdit }) { // Adicionado onEdi
     setShowExamsDialog(true);
   };
 
-  const createNewExam = async () => {
-    try {
-      const newExam = await db.createExam({
-        patient_id: patient.id,
-        exam_weight: patient.weight // Pré-preenche com o peso atual do paciente
-      });
-      navigate(`/exam/${newExam.id}`); // Navega para a página do novo exame
-    } catch (error) {
-      toast.error('Erro ao criar novo exame.');
-      console.error('Erro DB (createExam):', error);
-    }
-  };
+  // --- REMOVED: The createNewExam function is no longer needed here ---
+  // const createNewExam = async () => { ... };
 
   // Função para lidar com o sucesso da edição
   const handleEditSuccess = () => {
@@ -91,7 +97,8 @@ export function PatientCard({ patient, onUpdate, onEdit }) { // Adicionado onEdi
       <CardContent>
         <div className="flex gap-2">
           <Button
-            onClick={createNewExam}
+            // --- MODIFIED: Calls the onNewExam prop from HomePage ---
+            onClick={onNewExam}
             className="flex-1"
             data-testid={`new-exam-button-${patient.id}`}
           >
@@ -131,10 +138,15 @@ export function PatientCard({ patient, onUpdate, onEdit }) { // Adicionado onEdi
                       <div className="flex justify-between items-center">
                         <div>
                           <p className="font-medium text-sm">
-                            Exame de {new Date(exam.exam_date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            {/* --- MODIFIED: Shows Exam Type --- */}
+                            {getExamTypeName(exam.exam_type)}
+                            <span className="font-normal text-gray-600">
+                              {' - '}
+                              {new Date(exam.exam_date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            </span>
                           </p>
                           <p className="text-xs text-gray-500 mt-0.5">
-                            {exam.organs_data?.length || 0} órgãos descritos • {exam.images?.length || 0} imagens
+                            {exam.organs_data?.length || 0} itens descritos • {exam.images?.length || 0} imagens
                           </p>
                         </div>
                         <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-gray-600">

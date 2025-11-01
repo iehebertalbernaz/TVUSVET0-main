@@ -91,11 +91,13 @@ class DatabaseService {
 
   // ============= EXAMES =============
   
+  // --- MODIFIED FUNCTION ---
   async createExam(examData) {
     const exams = this.getExams();
     const newExam = {
       ...examData,
       id: this.generateId(),
+      exam_type: examData.exam_type || 'ultrasound', // <-- ADDED THIS LINE
       exam_date: examData.exam_date || new Date().toISOString(),
       organs_data: examData.organs_data || [],
       images: examData.images || [],
@@ -105,6 +107,7 @@ class DatabaseService {
     this.storage.setItem('exams', JSON.stringify(exams));
     return newExam;
   }
+  // --- END MODIFIED FUNCTION ---
 
   getExams(patientId = null) {
     const exams = JSON.parse(this.storage.getItem('exams') || '[]');
@@ -139,6 +142,7 @@ class DatabaseService {
 
   // ============= TEMPLATES =============
   
+  // --- MODIFIED FUNCTION ---
   initializeDefaultTemplates() {
     const organs = [
       'Estômago', 'Fígado', 'Baço', 'Rim Esquerdo', 'Rim Direito',
@@ -146,35 +150,100 @@ class DatabaseService {
       'Duodeno', 'Jejuno', 'Cólon', 'Ceco', 'Íleo', 'Linfonodos'
     ];
     
+    // --- NEW: Lists for new exam types ---
+    const echoOrgans = [
+      'Valva Mitral', 'Valva Aórtica', 'Ventrículo Esquerdo', 'Átrio Esquerdo',
+      'Saepto Interventricular', 'Pericárdio', 'Análise Doppler'
+    ];
+    const ecgOrgans = [
+      'Ritmo e Frequência', 'Eixo Elétrico', 'Onda P', 'Complexo QRS',
+      'Segmento ST', 'Onda T', 'Intervalos (PR, QT)', 'Conclusão ECG'
+    ];
+    // --- END NEW ---
+
     const templates = [];
+
+    // --- Ultrasound Organs ---
     organs.forEach((organ, idx) => {
       templates.push(
         {
           id: this.generateId(),
           organ,
           category: 'normal',
-          text: `${organ} com dimensões, contornos, ecogenicidade e ecotextura preservados.`,
+          // --- MODIFIED: Bilingual Object ---
+          title: { 'pt-BR': 'Normal', 'en-US': 'Normal' },
+          text: {
+            'pt-BR': `${organ} com dimensões, contornos, ecogenicidade e ecotextura preservados.`,
+            'en-US': `${organ} with preserved dimensions, contours, echogenicity, and echotexture.`
+          },
+          // --- END MOD ---
           order: idx * 10
         },
         {
           id: this.generateId(),
           organ,
           category: 'finding',
-          text: `${organ} apresenta alteração de ecogenicidade.`,
+          // --- MODIFIED: Bilingual Object ---
+          title: { 'pt-BR': 'Alteração de ecogenicidade', 'en-US': 'Altered echogenicity' },
+          text: {
+            'pt-BR': `${organ} apresenta alteração de ecogenicidade.`,
+            'en-US': `${organ} presents altered echogenicity.`
+          },
+          // --- END MOD ---
           order: idx * 10 + 1
         },
         {
           id: this.generateId(),
           organ,
           category: 'finding',
-          text: `${organ} com aumento de dimensões.`,
+          // --- MODIFIED: Bilingual Object ---
+          title: { 'pt-BR': 'Aumento de dimensões', 'en-US': 'Increased dimensions' },
+          text: {
+            'pt-BR': `${organ} com aumento de dimensões.`,
+            'en-US': `${organ} with increased dimensions.`
+          },
+          // --- END MOD ---
           order: idx * 10 + 2
         }
       );
     });
     
+    // --- NEW: Default Echo Templates ---
+    let echoOrder = organs.length * 10;
+    echoOrgans.forEach((organ, idx) => {
+      templates.push({
+        id: this.generateId(),
+        organ,
+        category: 'normal',
+        title: { 'pt-BR': 'Normal', 'en-US': 'Normal' },
+        text: {
+          'pt-BR': `Avaliação de ${organ} dentro dos padrões de normalidade.`,
+          'en-US': `${organ} assessment within normal limits.`
+        },
+        order: echoOrder + (idx * 10)
+      });
+    });
+
+    // --- NEW: Default ECG Templates ---
+    let ecgOrder = (organs.length + echoOrgans.length) * 10;
+    ecgOrgans.forEach((organ, idx) => {
+      templates.push({
+        id: this.generateId(),
+        organ,
+        category: 'normal',
+        title: { 'pt-BR': 'Normal', 'en-US': 'Normal' },
+        text: {
+          'pt-BR': `${organ}: Dentro dos limites da normalidade.`,
+          'en-US': `${organ}: Within normal limits.`
+        },
+        order: ecgOrder + (idx * 10)
+      });
+    });
+    // --- END NEW ---
+
     this.storage.setItem('templates', JSON.stringify(templates));
   }
+  // --- END MODIFIED FUNCTION ---
 
   getTemplates(organ = null) {
     const templates = JSON.parse(this.storage.getItem('templates') || '[]');

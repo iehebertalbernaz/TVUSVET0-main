@@ -1,3 +1,5 @@
+// frontend/src/pages/HomePage.js
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 // CORRIGIDO: ../components/ui/...
@@ -5,7 +7,7 @@ import { Button } from '../components/ui/button.jsx';
 import { Card } from '../components/ui/card.jsx';
 import { Input } from '../components/ui/input.jsx';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog.jsx';
-import { Search, Settings, Plus, Download } from 'lucide-react';
+import { Search, Settings, Plus, Download, FilePlus2 } from 'lucide-react'; // --- ADDED FilePlus2 icon ---
 import { toast } from 'sonner';
 // CORRIGIDO: ../services/... e ../components/...
 import { db } from '../services/database.js';
@@ -17,6 +19,12 @@ export default function HomePage() {
   const [searchTerm, setSearchTerm] = useState(''); // Estado para o termo de busca
   const [showNewPatientDialog, setShowNewPatientDialog] = useState(false); // Estado para controlar a exibição do modal de novo paciente
   const [editingPatient, setEditingPatient] = useState(null); // Estado para guardar o paciente sendo editado (ou null se for novo)
+  
+  // --- NEW: State for New Exam Dialog ---
+  const [showNewExamDialog, setShowNewExamDialog] = useState(false);
+  const [patientForNewExam, setPatientForNewExam] = useState(null);
+  // --- END NEW ---
+
   const navigate = useNavigate(); // Hook para navegação
 
   // useEffect para carregar os pacientes quando o componente é montado
@@ -75,6 +83,35 @@ export default function HomePage() {
     loadPatients(); // Recarrega a lista de pacientes
   };
 
+  // --- NEW: Handlers for New Exam Flow ---
+  
+  // 1. Esta função é chamada pelo PatientCard
+  const openNewExamDialog = (patient) => {
+    setPatientForNewExam(patient);
+    setShowNewExamDialog(true);
+  };
+
+  // 2. Esta é chamada pelos botões no novo dialog
+  const handleCreateExam = async (examType) => {
+    if (!patientForNewExam) return;
+    try {
+      // Cria o exame com o 'exam_type' correto
+      const newExam = await db.createExam({
+        patient_id: patientForNewExam.id,
+        exam_type: examType 
+      });
+      
+      toast.success('Exame criado com sucesso!');
+      setShowNewExamDialog(false);
+      setPatientForNewExam(null);
+      navigate(`/exam/${newExam.id}`); // Navega para a página do novo exame
+    } catch (error) {
+      toast.error('Erro ao criar exame.');
+      console.error('Erro DB (createExam):', error);
+    }
+  };
+  // --- END NEW ---
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50" data-testid="home-page">
       <div className="container mx-auto p-6">
@@ -125,6 +162,7 @@ export default function HomePage() {
               patient={patient}
               onUpdate={loadPatients} // Passa a função para recarregar a lista após edição/exclusão
               onEdit={() => openPatientForm(patient)} // Abre o form em modo edição
+              onNewExam={() => openNewExamDialog(patient)} // --- MODIFIED: Passa a nova função ---
             />
           ))}
         </div>
@@ -156,6 +194,40 @@ export default function HomePage() {
           />
         </DialogContent>
       </Dialog>
+
+      {/* --- NEW: Modal (Dialog) para Selecionar Tipo de Exame --- */}
+      <Dialog 
+        open={showNewExamDialog} 
+        onOpenChange={(isOpen) => {
+          setShowNewExamDialog(isOpen);
+          if (!isOpen) setPatientForNewExam(null); // Limpa o paciente ao fechar
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Novo Exame para {patientForNewExam?.name}</DialogTitle>
+            <DialogDescription>
+              Selecione o tipo de exame que deseja criar para este paciente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 pt-4">
+            <Button onClick={() => handleCreateExam('ultrasound')} size="lg" className="h-12 text-base">
+              <FilePlus2 className="mr-2 h-5 w-5" />
+              Ultrassonografia
+            </Button>
+            <Button onClick={() => handleCreateExam('echo')} size="lg" variant="outline" className="h-12 text-base">
+              <FilePlus2 className="mr-2 h-5 w-5" />
+              Ecocardiografia
+            </Button>
+            <Button onClick={() => handleCreateExam('ecg')} size="lg" variant="outline" className="h-12 text-base">
+              <FilePlus2 className="mr-2 h-5 w-5" />
+              Eletrocardiografia
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* --- END NEW --- */}
+
     </div>
   );
 }
